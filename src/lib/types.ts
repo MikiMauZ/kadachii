@@ -42,3 +42,12 @@ export interface ProjectMember {
     name?: string; 
     avatarUrl?: string;
 }
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderAvatarUrl?: string;
+  text: string;
+  timestamp: any; // Firestore Timestamp
+}

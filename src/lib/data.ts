@@ -1,7 +1,7 @@
 
-import type { Project, Column, Task, ProjectMember, Assignee } from "./types";
+import type { Project, Column, Task, ProjectMember, Assignee, ChatMessage } from "./types";
 import { db } from './firebase';
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, query, where, writeBatch, getDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, query, where, writeBatch, getDoc, arrayUnion, arrayRemove, onSnapshot, serverTimestamp, orderBy } from 'firebase/firestore';
 
 // Users
 export const createUser = async (userId: string, data: { email: string }) => {
@@ -14,6 +14,15 @@ export const createUser = async (userId: string, data: { email: string }) => {
         photoURL: `https://placehold.co/100x100.png?text=${data.email[0].toUpperCase()}`
      }, { merge: true });
 };
+
+export const getUser = async (userId: string) => {
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+        return { id: userSnap.id, ...userSnap.data() };
+    }
+    return null;
+}
 
 // Projects
 export const getProjects = async (userId: string): Promise<Project[]> => {
@@ -87,7 +96,7 @@ export const deleteProject = async (projectId: string) => {
     const projectRef = doc(db, 'projects', projectId);
 
     // Delete all subcollections (tasks, columns, members)
-    const collectionsToDelete = ['tasks', 'columns', 'members'];
+    const collectionsToDelete = ['tasks', 'columns', 'members', 'messages'];
     for (const subcollection of collectionsToDelete) {
         const subcollectionRef = collection(db, `projects/${projectId}/${subcollection}`);
         const snapshot = await getDocs(subcollectionRef);
@@ -240,4 +249,29 @@ export const updateTask = async (projectId: string, taskId: string, task: Partia
 export const deleteTask = async (projectId: string, taskId: string) => {
     const taskRef = doc(db, `projects/${projectId}/tasks`, taskId);
     return await deleteDoc(taskRef);
+};
+
+
+// Chat Messages
+export const getChatMessages = (projectId: string, callback: (messages: ChatMessage[]) => void) => {
+    const messagesRef = collection(db, `projects/${projectId}/messages`);
+    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const messages = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        } as ChatMessage));
+        callback(messages);
+    });
+
+    return unsubscribe;
+};
+
+export const sendChatMessage = async (projectId: string, message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
+    const messagesRef = collection(db, `projects/${projectId}/messages`);
+    return await addDoc(messagesRef, {
+        ...message,
+        timestamp: serverTimestamp()
+    });
 };
