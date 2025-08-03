@@ -19,7 +19,7 @@ import { Label } from "./ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState, useMemo } from "react";
 import { ProjectMember } from "@/lib/types";
-import { addUserToProject, getProjectMembers } from "@/lib/data";
+import { inviteUserToProject, getProjectMembers } from "@/lib/data";
 import { usePathname } from "next/navigation";
 
 export function TeamModal({ children }: { children: React.ReactNode }) {
@@ -38,34 +38,40 @@ export function TeamModal({ children }: { children: React.ReactNode }) {
     const [members, setMembers] = useState<ProjectMember[]>([]);
     const [inviteEmail, setInviteEmail] = useState("");
     const [loading, setLoading] = useState(false);
+    const [loadingMembers, setLoadingMembers] = useState(false);
     const [open, setOpen] = useState(false);
 
 
     useEffect(() => {
         if (open && projectId) {
-            setLoading(true);
+            setLoadingMembers(true);
             getProjectMembers(projectId)
                 .then(setMembers)
                 .catch(console.error)
-                .finally(() => setLoading(false));
+                .finally(() => setLoadingMembers(false));
         }
     }, [open, projectId]);
 
     const handleInvite = async () => {
-        if (!inviteEmail.trim()) {
-            toast({ title: "Por favor, introduce un email.", variant: "destructive" });
+        const normalizedEmail = inviteEmail.trim().toLowerCase();
+        if (!user?.email || !normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+            toast({ title: "Por favor, introduce un email válido.", variant: "destructive" });
             return;
         }
         if (!projectId) {
             toast({ title: "ID de proyecto no válido.", variant: "destructive" });
             return;
         }
+        if (members.some(member => member.email.toLowerCase() === normalizedEmail)) {
+            toast({ title: "Este usuario ya es miembro del proyecto.", variant: "default" });
+            return;
+        }
+
         setLoading(true);
         try {
-            const newMember = await addUserToProject(projectId, inviteEmail);
-            setMembers(prev => [...prev, newMember]);
+            await inviteUserToProject(projectId, user.email, normalizedEmail);
             setInviteEmail("");
-            toast({ title: "¡Usuario invitado con éxito!" });
+            toast({ title: "¡Invitación enviada con éxito!" });
         } catch (error: any) {
             console.error(error);
             toast({ title: "Error al invitar", description: error.message, variant: "destructive" });
@@ -98,7 +104,9 @@ export function TeamModal({ children }: { children: React.ReactNode }) {
           <div className="space-y-4 pt-4">
              <h4 className="text-sm font-medium text-muted-foreground">Miembros del equipo ({members.length})</h4>
              <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-                {members.map(member => (
+                {loadingMembers ? (
+                    <p className="text-sm text-muted-foreground">Cargando miembros...</p>
+                ) : members.map(member => (
                     <div key={member.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <Avatar className="h-9 w-9">
@@ -106,8 +114,11 @@ export function TeamModal({ children }: { children: React.ReactNode }) {
                         <AvatarFallback>{member.email?.[0].toUpperCase() ?? 'U'}</AvatarFallback>
                         </Avatar>
                         <div>
-                        <p className="text-sm font-medium">{member.name ?? member.email} {member.id === user?.uid && '(Tú)'}</p>
-                        <p className="text-xs text-muted-foreground">{member.email}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium">{member.name ?? member.email} {member.id === user?.uid && '(Tú)'}</p>
+                             <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{member.email}</p>
                         </div>
                     </div>
                     <span className="text-xs text-muted-foreground capitalize">{member.role}</span>

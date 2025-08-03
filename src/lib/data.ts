@@ -1,7 +1,8 @@
 
-import type { Project, Column, Task, ProjectMember, Assignee, ChatMessage } from "./types";
+
+import type { Project, Column, Task, ProjectMember, Assignee, ChatMessage, ProjectInvitation, WhiteboardPath, WhiteboardPoint } from "./types";
 import { db } from './firebase';
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, query, where, writeBatch, getDoc, arrayUnion, arrayRemove, onSnapshot, serverTimestamp, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, query, where, writeBatch, getDoc, arrayUnion, arrayRemove, onSnapshot, serverTimestamp, orderBy, limit } from 'firebase/firestore';
 
 // Users
 export const createUser = async (userId: string, data: { email: string }) => {
@@ -11,7 +12,7 @@ export const createUser = async (userId: string, data: { email: string }) => {
         ...data, 
         projects: [],
         displayName: data.email.split('@')[0], // Default display name
-        photoURL: `https://placehold.co/100x100.png?text=${data.email[0].toUpperCase()}`
+        photoURL: `https://placehold.co/100x100/E8E8E8/000000?text=${data.email[0].toUpperCase()}`
      }, { merge: true });
 };
 
@@ -23,6 +24,12 @@ export const getUser = async (userId: string) => {
     }
     return null;
 }
+
+export const updateUser = async (userId: string, data: Partial<{ displayName: string; photoURL: string }>) => {
+    const userRef = doc(db, 'users', userId);
+    return await updateDoc(userRef, data);
+};
+
 
 // Projects
 export const getProjects = async (userId: string): Promise<Project[]> => {
@@ -77,7 +84,7 @@ export const createProject = async (userId: string, userEmail: string, project: 
     });
 
     const memberRef = doc(db, `projects/${projectRef.id}/members`, userId);
-    batch.set(memberRef, { email: userEmail, role: 'owner' });
+    batch.set(memberRef, { email: userEmail.toLowerCase(), role: 'owner' });
 
     const userRef = doc(db, 'users', userId);
     batch.set(userRef, { projects: arrayUnion(projectRef.id) }, { merge: true });
@@ -95,8 +102,8 @@ export const deleteProject = async (projectId: string) => {
     const batch = writeBatch(db);
     const projectRef = doc(db, 'projects', projectId);
 
-    // Delete all subcollections (tasks, columns, members)
-    const collectionsToDelete = ['tasks', 'columns', 'members', 'messages'];
+    // Delete all subcollections (tasks, columns, members, messages, invitations, whiteboard)
+    const collectionsToDelete = ['tasks', 'columns', 'members', 'messages', 'invitations', 'whiteboard'];
     for (const subcollection of collectionsToDelete) {
         const subcollectionRef = collection(db, `projects/${projectId}/${subcollection}`);
         const snapshot = await getDocs(subcollectionRef);
@@ -121,7 +128,7 @@ export const deleteProject = async (projectId: string) => {
 };
 
 
-// Team / Members
+// Team / Members / Invitations
 export const getProjectMembers = async (projectId: string): Promise<ProjectMember[]> => {
     if (!projectId) return [];
     const membersSnapshot = await getDocs(collection(db, `projects/${projectId}/members`));
@@ -133,61 +140,108 @@ export const getProjectMembers = async (projectId: string): Promise<ProjectMembe
     
     const usersData = new Map<string, any>();
     usersSnapshot.forEach(doc => usersData.set(doc.id, doc.data()));
-
-    return membersSnapshot.docs.map(doc => {
+    
+    const allMembers: ProjectMember[] = membersSnapshot.docs.map(doc => {
         const memberData = doc.data();
-        const userData = usersData.get(doc.id) ?? {};
+        const userData = usersData.get(doc.id);
+        
         return {
             id: doc.id,
             email: memberData.email,
             role: memberData.role,
-            name: userData.displayName,
-            avatarUrl: userData.photoURL
+            name: userData?.displayName ?? memberData.email,
+            avatarUrl: userData?.photoURL ?? `https://placehold.co/100x100.png?text=${memberData.email[0].toUpperCase()}`
         } as ProjectMember;
-    });
+    }).filter(member => !!usersData.get(member.id)); // Filter out pending members who aren't users yet
+    
+    return allMembers;
 };
 
 
-export const addUserToProject = async (projectId: string, email: string) => {
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where("email", "==", email));
-    const querySnapshot = await getDocs(q);
+export const inviteUserToProject = async (projectId: string, inviterEmail: string, invitedEmail: string) => {
+    const normalizedEmail = invitedEmail.toLowerCase();
+    
+    const projectDoc = await getDoc(doc(db, 'projects', projectId));
+    if (!projectDoc.exists()) {
+        throw new Error("El proyecto no existe.");
+    }
 
-    if (querySnapshot.empty) {
-        throw new Error("No se encontró ningún usuario con ese correo electrónico.");
+    // Check if user is already a member
+    const membersRef = collection(db, `projects/${projectId}/members`);
+    const memberQuery = query(membersRef, where("email", "==", normalizedEmail));
+    const memberSnapshot = await getDocs(memberQuery);
+    if (!memberSnapshot.empty) {
+        throw new Error("Este usuario ya es miembro del proyecto.");
     }
     
-    const userDoc = querySnapshot.docs[0];
-    const userId = userDoc.id;
+    // Check for an existing pending invitation for this email
+    const invitationsRef = collection(db, `invitations`);
+    const invitationQuery = query(invitationsRef, where("email", "==", normalizedEmail), where("projectId", "==", projectId), where("status", "==", "pending"));
+    const invitationSnapshot = await getDocs(invitationQuery);
+    if (!invitationSnapshot.empty) {
+        throw new Error("Ya existe una invitación pendiente para este correo electrónico en este proyecto.");
+    }
 
-    const batch = writeBatch(db);
+    // Create a new invitation in the root collection
+    await addDoc(invitationsRef, {
+        email: normalizedEmail,
+        projectId: projectId,
+        projectName: projectDoc.data().name,
+        invitedByUserEmail: inviterEmail,
+        status: 'pending',
+        createdAt: serverTimestamp()
+    });
+};
+
+export const getInvitationsForUser = async (userEmail: string): Promise<ProjectInvitation[]> => {
+    const normalizedEmail = userEmail.toLowerCase();
+    const invitations: ProjectInvitation[] = [];
     
-    // Add member to project's subcollection
-    const memberRef = doc(db, `projects/${projectId}/members`, userId);
-    batch.set(memberRef, { email, role: 'member' });
+    const q = query(collection(db, "invitations"), where("email", "==", normalizedEmail), where("status", "==", "pending"));
+    
+    const invitationsSnapshot = await getDocs(q);
+    invitationsSnapshot.forEach(doc => {
+        invitations.push({ id: doc.id, ...doc.data() } as ProjectInvitation);
+    });
 
-    // Add project to user's list of projects
+    return invitations;
+}
+
+export const acceptInvitation = async (userId: string, userEmail: string, invitationId: string, projectId: string) => {
+    const batch = writeBatch(db);
+
+    // 1. Update invitation status to 'accepted'
+    const invitationRef = doc(db, `invitations`, invitationId);
+    batch.update(invitationRef, { status: 'accepted' });
+
+    // 2. Add user to the project's members subcollection
+    const memberRef = doc(db, `projects/${projectId}/members`, userId);
+    batch.set(memberRef, { email: userEmail.toLowerCase(), role: 'member' });
+
+    // 3. Add project to the user's list of projects
     const userRef = doc(db, 'users', userId);
     batch.update(userRef, { projects: arrayUnion(projectId) });
 
     await batch.commit();
-    
-    const userData = userDoc.data();
-    return {
-        id: userId,
-        email: email,
-        role: 'member',
-        name: userData.displayName,
-        avatarUrl: userData.photoURL
-    } as ProjectMember;
+};
+
+export const declineInvitation = async (invitationId: string) => {
+    const invitationRef = doc(db, "invitations", invitationId);
+    await deleteDoc(invitationRef);
 };
 
 
 // Columns
-export const getColumns = async (projectId: string): Promise<Column[]> => {
-    if (!projectId) return [];
-    const querySnapshot = await getDocs(collection(db, `projects/${projectId}/columns`));
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Column));
+export const getColumns = (projectId: string, callback: (columns: Column[]) => void) => {
+    if (!projectId) return () => {};
+    const columnsQuery = query(collection(db, `projects/${projectId}/columns`));
+    
+    const unsubscribe = onSnapshot(columnsQuery, (querySnapshot) => {
+        const columns = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Column));
+        callback(columns);
+    });
+
+    return unsubscribe; // Return the unsubscribe function
 };
 
 export const createColumn = async (projectId: string, column: Omit<Column, 'id'>) => {
@@ -203,8 +257,7 @@ export const updateColumn = async (projectId: string, columnId: string, data: Pa
 export const deleteColumn = async (projectId: string, columnId: string) => {
     const columnRef = doc(db, `projects/${projectId}/columns`, columnId);
     
-    // Optional: Check if column is empty before deleting
-    const tasksSnapshot = await getDocs(query(collection(db, `projects/${projectId}/tasks`), where('columnId', '==', columnId)));
+    const tasksSnapshot = await getDocs(query(collection(db, `projects/${projectId}/tasks`), where('columnId', '==', columnId), limit(1)));
     if (!tasksSnapshot.empty) {
         throw new Error("Column is not empty. Move tasks before deleting.");
     }
@@ -215,8 +268,22 @@ export const deleteColumn = async (projectId: string, columnId: string) => {
 // Tasks
 export const getTasks = async (projectId: string): Promise<Task[]> => {
     if (!projectId) return [];
-    const querySnapshot = await getDocs(collection(db, `projects/${projectId}/tasks`));
+    const tasksQuery = query(collection(db, `projects/${projectId}/tasks`));
+    const querySnapshot = await getDocs(tasksQuery);
     return querySnapshot.docs.map(doc => ({ id: doc.id, projectId, ...doc.data() } as Task));
+};
+
+
+export const getTasksWithListener = (projectId: string, callback: (tasks: Task[]) => void) => {
+    if (!projectId) return () => {};
+    const tasksQuery = query(collection(db, `projects/${projectId}/tasks`));
+
+    const unsubscribe = onSnapshot(tasksQuery, (querySnapshot) => {
+        const tasks = querySnapshot.docs.map(doc => ({ id: doc.id, projectId, ...doc.data() } as Task));
+        callback(tasks);
+    });
+    
+    return unsubscribe; // Return the unsubscribe function
 };
 
 export const createTask = async (projectId: string, task: Omit<Task, 'id' | 'projectId'>): Promise<string> => {
@@ -275,3 +342,31 @@ export const sendChatMessage = async (projectId: string, message: Omit<ChatMessa
         timestamp: serverTimestamp()
     });
 };
+
+// Whiteboard
+export const getWhiteboardUpdates = (projectId: string, callback: (paths: WhiteboardPath[]) => void) => {
+    const whiteboardRef = collection(db, `projects/${projectId}/whiteboard`);
+    const q = query(whiteboardRef, orderBy('timestamp', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const paths: WhiteboardPath[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WhiteboardPath));
+        callback(paths);
+    });
+
+    return unsubscribe;
+};
+
+export const drawOnWhiteboard = async (projectId: string, pathData: { path: WhiteboardPoint[], color: string }) => {
+    const whiteboardRef = collection(db, `projects/${projectId}/whiteboard`);
+    return await addDoc(whiteboardRef, { ...pathData, timestamp: serverTimestamp() });
+}
+
+export const clearWhiteboard = async (projectId: string) => {
+    const whiteboardRef = collection(db, `projects/${projectId}/whiteboard`);
+    const snapshot = await getDocs(whiteboardRef);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+    });
+    await batch.commit();
+}

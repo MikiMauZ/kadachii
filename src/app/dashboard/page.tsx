@@ -3,12 +3,12 @@
 import { Header } from '@/components/header';
 import { useAuth } from '@/components/auth-provider';
 import { useEffect, useState } from 'react';
-import { Project, Task } from '@/lib/types';
-import { deleteProject, getProjects, getTasks, updateProject } from '@/lib/data';
+import { Project, Task, ProjectInvitation } from '@/lib/types';
+import { deleteProject, getProjects, getTasks, updateProject, getInvitationsForUser, acceptInvitation, declineInvitation } from '@/lib/data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { MoreHorizontal, Plus, Trash, Edit } from 'lucide-react';
+import { MoreHorizontal, Plus, Trash, Edit, Check, X, Mail } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProjectModal } from '@/components/project-modal';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -24,12 +24,14 @@ interface ProjectWithTasks extends Project {
 export default function DashboardPage() {
   const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectWithTasks[]>([]);
+  const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
     if (user) {
       fetchProjectsAndTasks();
+      fetchInvitations();
     } else if (user === null) {
       setLoading(false);
     }
@@ -44,7 +46,7 @@ export default function DashboardPage() {
         userProjects.map(async (project) => {
           const tasks = await getTasks(project.id);
           const completedTasks = tasks.filter(
-            (task) => task.columnId === 'hecho' // Assuming 'hecho' is the done column
+            (task: Task) => task.columnId === 'hecho' // Assuming 'hecho' is the done column
           );
           return {
             ...project,
@@ -61,6 +63,42 @@ export default function DashboardPage() {
       setLoading(false);
     }
   };
+
+  const fetchInvitations = async () => {
+      if (!user?.email) return;
+      try {
+          const userInvitations = await getInvitationsForUser(user.email);
+          setInvitations(userInvitations);
+      } catch (error) {
+          console.error("Error fetching invitations:", error);
+          toast({ title: "Error al cargar las invitaciones", variant: 'destructive' });
+      }
+  };
+  
+  const handleAcceptInvitation = async (invitation: ProjectInvitation) => {
+    if (!user) return;
+    try {
+        await acceptInvitation(user.uid, user.email!, invitation.id, invitation.projectId);
+        toast({ title: `¡Bienvenido a ${invitation.projectName}!` });
+        setInvitations(prev => prev.filter(i => i.id !== invitation.id));
+        fetchProjectsAndTasks(); // Refresh project list
+    } catch (error) {
+        console.error("Error accepting invitation:", error);
+        toast({ title: "Error al aceptar la invitación", variant: 'destructive' });
+    }
+  };
+
+  const handleDeclineInvitation = async (invitation: ProjectInvitation) => {
+    try {
+        await declineInvitation(invitation.id);
+        toast({ title: "Invitación rechazada" });
+        setInvitations(prev => prev.filter(i => i.id !== invitation.id));
+    } catch (error) {
+        console.error("Error declining invitation:", error);
+        toast({ title: "Error al rechazar la invitación", variant: 'destructive' });
+    }
+  };
+
 
   const handleProjectCreated = (project: Project) => {
     const newProjectWithTasks: ProjectWithTasks = {
@@ -93,6 +131,31 @@ export default function DashboardPage() {
     <div className="flex min-h-screen w-full flex-col bg-background">
       <Header onProjectCreated={handleProjectCreated} />
       <main className="flex-1 p-4 md:p-6 lg:p-8">
+        
+        {invitations.length > 0 && (
+            <div className="mb-8">
+                 <h2 className="text-xl font-bold mb-4">Invitaciones Pendientes</h2>
+                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                     {invitations.map(invitation => (
+                         <Card key={invitation.id} className="bg-muted/50">
+                             <CardHeader>
+                                 <CardTitle className="text-lg">Te han invitado a <span className="font-bold">{invitation.projectName}</span></CardTitle>
+                                 <CardDescription>Invitado por: {invitation.invitedByUserEmail}</CardDescription>
+                             </CardHeader>
+                             <CardContent className="flex gap-4">
+                                 <Button onClick={() => handleAcceptInvitation(invitation)} className="w-full">
+                                     <Check className="mr-2 h-4 w-4"/> Aceptar
+                                 </Button>
+                                 <Button onClick={() => handleDeclineInvitation(invitation)} variant="destructive" className="w-full">
+                                     <X className="mr-2 h-4 w-4"/> Rechazar
+                                 </Button>
+                             </CardContent>
+                         </Card>
+                     ))}
+                 </div>
+            </div>
+        )}
+
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Mis Proyectos</h1>
            <ProjectModal onProjectCreated={handleProjectCreated}>
@@ -191,5 +254,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    

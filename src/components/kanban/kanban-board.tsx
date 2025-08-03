@@ -42,8 +42,13 @@ export function KanbanBoard({
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>, columnId: Column["id"]) => {
     const taskId = e.dataTransfer.getData("taskId");
     if (!taskId || !user || !projectId) return;
+    
+    const taskToMove = initialTasks.find(t => t.id === taskId);
+    if (!taskToMove || taskToMove.columnId === columnId) return;
 
-    const originalTasks = initialTasks;
+
+    // Optimistic update for smoother UI
+    const originalTasks = [...initialTasks];
     const updatedTasks = initialTasks.map((task) =>
       task.id === taskId ? { ...task, columnId: columnId } : task
     );
@@ -52,7 +57,7 @@ export function KanbanBoard({
     try {
       await updateTask(projectId, taskId, { columnId });
     } catch (error) {
-      setInitialTasks(originalTasks);
+      setInitialTasks(originalTasks); // Revert on error
       toast({
         title: "Error al mover la tarea",
         description: "No se pudo actualizar la tarea. Inténtalo de nuevo.",
@@ -60,16 +65,21 @@ export function KanbanBoard({
       });
     }
   };
-
+  
+  // These handlers can be simplified or removed as real-time listeners now handle state updates.
+  // They can be kept for components that might not be listening in real-time or for optimistic UI.
   const handleUpdateTask = (updatedTask: Task) => {
+     // The listener will handle this, but an optimistic update can feel faster.
     setInitialTasks(initialTasks.map(task => task.id === updatedTask.id ? updatedTask : task));
   }
 
   const handleDeleteTask = (taskId: string) => {
+    // The listener will handle this, but an optimistic update can feel faster.
     setInitialTasks(initialTasks.filter(task => task.id !== taskId));
   }
   
   const handleTaskCreated = (newTask: Task) => {
+     // The listener will handle this, but an optimistic update can feel faster.
     setInitialTasks([...initialTasks, newTask]);
   }
 
@@ -79,9 +89,8 @@ export function KanbanBoard({
         return;
     }
     try {
-        const newColumnId = await apiCreateColumn(projectId, { title: newColumnName.trim() });
-        const newColumn: Column = { id: newColumnId, title: newColumnName.trim() };
-        setInitialColumns([...initialColumns, newColumn]);
+        // The listener will add the new column to the state.
+        await apiCreateColumn(projectId, { title: newColumnName.trim() });
         setNewColumnName("");
         setIsAddingColumn(false);
         toast({title: "Columna creada con éxito"});
@@ -92,10 +101,12 @@ export function KanbanBoard({
   }
   
   const handleColumnUpdated = (updatedColumn: Column) => {
+     // The listener will handle this.
     setInitialColumns(initialColumns.map(c => c.id === updatedColumn.id ? updatedColumn : c));
   }
 
   const handleColumnDeleted = (columnId: string) => {
+    // The listener will handle this.
     setInitialColumns(initialColumns.filter(c => c.id !== columnId));
   }
 

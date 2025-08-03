@@ -5,7 +5,7 @@ import { KanbanBoard } from '@/components/kanban/kanban-board';
 import { useAuth } from '@/components/auth-provider';
 import React, { useEffect, useState } from 'react';
 import { Project, Column, Task } from '@/lib/types';
-import { getColumns, getProject, getTasks } from '@/lib/data';
+import { getColumns, getProject, getTasksWithListener } from '@/lib/data';
 import { Button } from '@/components/ui/button';
 import { MessageSquare } from 'lucide-react';
 import { ChatPanel } from '@/components/chat-panel';
@@ -18,33 +18,43 @@ export default function ProjectPage({ params }: { params: { projectId: string } 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const { projectId } = React.use(params);
+  const projectId = React.use(params).projectId;
 
   useEffect(() => {
     if (user && projectId) {
-      const fetchData = async () => {
-        setLoading(true);
+      setLoading(true);
+      
+      const fetchStaticData = async () => {
         try {
-          const [projectData, projectColumns, projectTasks] = await Promise.all([
-            getProject(projectId),
-            getColumns(projectId),
-            getTasks(projectId),
-          ]);
+          const projectData = await getProject(projectId);
           setProject(projectData);
-          setColumns(projectColumns);
-          setTasks(projectTasks);
         } catch (error) {
            console.error("Error fetching project data:", error);
            setProject(null);
-           setColumns([]);
-           setTasks([]);
-        } finally {
-            setLoading(false);
         }
       };
-      fetchData();
+
+      fetchStaticData();
+
+      const unsubscribeColumns = getColumns(projectId, (projectColumns) => {
+        setColumns(projectColumns);
+        setLoading(false); // Assume loading is finished after first column fetch
+      });
+
+      const unsubscribeTasks = getTasksWithListener(projectId, (projectTasks) => {
+        setTasks(projectTasks);
+      });
+
+      // Cleanup subscription on unmount
+      return () => {
+        unsubscribeColumns();
+        unsubscribeTasks();
+      };
     } else if (user === null) {
       setLoading(false);
+      setColumns([]);
+      setTasks([]);
+      setProject(null);
     }
   }, [user, projectId]);
 
@@ -52,6 +62,9 @@ export default function ProjectPage({ params }: { params: { projectId: string } 
     // This is handled on the main dashboard page now
   }
 
+  // Optimistic updates are now handled by real-time listeners. 
+  // We can still keep these handlers for components that might not be subscribed yet,
+  // or to provide an immediate UI feedback before the listener catches up.
   const handleDeleteTask = (taskId: string) => {
     setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
   };
@@ -72,7 +85,6 @@ export default function ProjectPage({ params }: { params: { projectId: string } 
             setInitialTasks={setTasks}
             projectId={projectId}
             loading={loading}
-            onDeleteTask={handleDeleteTask}
         />
          {!isChatOpen && (
           <Button

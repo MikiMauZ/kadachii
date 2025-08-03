@@ -43,6 +43,16 @@ export interface ProjectMember {
     avatarUrl?: string;
 }
 
+export interface ProjectInvitation {
+    id: string; // Invitation ID
+    projectId: string;
+    projectName: string;
+    email: string;
+    invitedByUserEmail: string;
+    status: 'pending' | 'accepted' | 'declined';
+}
+
+
 export interface ChatMessage {
   id: string;
   senderId: string;
@@ -50,4 +60,15 @@ export interface ChatMessage {
   senderAvatarUrl?: string;
   text: string;
   timestamp: any; // Firestore Timestamp
+}
+
+export interface WhiteboardPoint {
+  x: number;
+  y: number;
+}
+
+export interface WhiteboardPath {
+  id?: string;
+  path: WhiteboardPoint[];
+  color: string;
 }
