@@ -3,7 +3,6 @@
 
 import type { Project } from "@/lib/types";
 import {
-  LayoutGrid,
   LogOut,
   Plus,
   Settings,
@@ -39,6 +38,7 @@ import { auth } from "@/lib/firebase";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import Link from "next/link";
+import Image from "next/image";
 
 interface HeaderProps {
   onProjectCreated: (project: Project) => void;
@@ -63,7 +63,7 @@ export function Header({ onProjectCreated, projectName }: HeaderProps) {
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
       <nav className="flex w-full items-center gap-6 text-lg font-medium md:gap-5 md:text-sm">
         <Link href="/dashboard" className="flex items-center gap-2 font-semibold md:text-base">
-          <LayoutGrid className="h-6 w-6 text-primary" />
+          <Image src="/logo.png" alt="Kadichii logo" width={24} height={24} className="h-6 w-6" />
           <span className="font-headline text-xl">Kadichii</span>
         </Link>
         

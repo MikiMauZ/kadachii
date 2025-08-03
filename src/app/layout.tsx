@@ -15,6 +15,7 @@ export default function RootLayout({
       <head>
         <title>Kadichii</title>
         <meta name="description" content="Visualiza tus tareas con un elegante tablero Kanban." />
+        <link rel="icon" href="/logo.png" sizes="any" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
