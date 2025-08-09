@@ -3,9 +3,10 @@
 
 import type { Project } from "@/lib/types";
 import {
+  LayoutGrid,
   LogOut,
   PenSquare,
-  Plus,
+  Rows3,
   Settings,
   Users,
 } from "lucide-react";
@@ -19,8 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ProjectModal } from "@/components/project-modal";
-import React, { useState } from "react";
+import React, from "react";
 import { SettingsModal } from "./settings-modal";
 import { TeamModal } from "./team-modal";
 import {
@@ -41,21 +41,36 @@ import { signOut } from "firebase/auth";
 import Link from "next/link";
 import Image from "next/image";
 import { Whiteboard } from "./whiteboard";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 
 interface HeaderProps {
   onProjectCreated: (project: Project) => void;
   projectName?: string;
+  layout?: 'row' | 'grid';
+  setLayout?: (layout: 'row' | 'grid') => void;
 }
 
-export function Header({ onProjectCreated, projectName }: HeaderProps) {
+const isAvatarAnEmoji = (url: string | null | undefined) => {
+    if (!url) return false;
+    return url.length > 0 && !url.startsWith('http');
+}
+
+
+export function Header({ onProjectCreated, projectName, layout, setLayout }: HeaderProps) {
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
+  const [isWhiteboardOpen, setIsWhiteboardOpen] = React.useState(false);
 
   const handleLogout = async () => {
     await signOut(auth);
     router.push('/login');
+  };
+
+  const handleLayoutChange = (value: 'row' | 'grid') => {
+    if (value && setLayout) { // Check if value is not empty/null
+      setLayout(value);
+    }
   };
 
   const isDashboardHome = pathname === '/dashboard';
@@ -81,28 +96,39 @@ export function Header({ onProjectCreated, projectName }: HeaderProps) {
 
 
           <div className="ml-auto flex items-center gap-4">
+             {isProjectPage && layout && setLayout && (
+               <ToggleGroup type="single" value={layout} onValueChange={handleLayoutChange} aria-label="Kanban Layout">
+                  <ToggleGroupItem value="row" aria-label="Row layout">
+                      <Rows3 className="h-4 w-4" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="grid" aria-label="Grid layout">
+                      <LayoutGrid className="h-4 w-4" />
+                  </ToggleGroupItem>
+              </ToggleGroup>
+             )}
              {isProjectPage && (
               <Button variant="outline" size="icon" onClick={() => setIsWhiteboardOpen(!isWhiteboardOpen)}>
                 <PenSquare />
               </Button>
             )}
-            {isDashboardHome && (
-              <ProjectModal onProjectCreated={onProjectCreated}>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Nuevo Proyecto
-                </Button>
-              </ProjectModal>
-            )}
             {user && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage src={user.photoURL ?? "https://placehold.co/100x100.png"} alt="@user" data-ai-hint="person portrait" />
-                      <AvatarFallback>{user.email?.[0].toUpperCase() ?? 'U'}</AvatarFallback>
-                    </Avatar>
-                  </Button>
+                   <div className="flex flex-col items-center cursor-pointer">
+                      <Avatar className="h-9 w-9">
+                         {isAvatarAnEmoji(user.photoURL) ? (
+                            <AvatarFallback className="text-xl bg-transparent">{user.photoURL}</AvatarFallback>
+                          ) : (
+                            <>
+                              <AvatarImage src={user.photoURL ?? ''} alt="@user" data-ai-hint="person portrait" />
+                              <AvatarFallback>{(user.displayName ?? user.email ?? 'U').charAt(0).toUpperCase()}</AvatarFallback>
+                            </>
+                          )}
+                      </Avatar>
+                       <span className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                        {(user.displayName ?? "User").substring(0, 3)}
+                      </span>
+                  </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56" align="end" forceMount>
                   <DropdownMenuLabel className="font-normal">

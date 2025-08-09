@@ -17,13 +17,15 @@ import { Textarea } from "@/components/ui/textarea";
 import React, { useState } from "react";
 import { useAuth } from "../auth-provider";
 import { useToast } from "@/hooks/use-toast";
-import { Task } from "@/lib/types";
-import { createTask } from "@/lib/data";
-import { Calendar as CalendarIcon, Plus } from "lucide-react";
+import { Task, ChecklistItem } from "@/lib/types";
+import { createTask, getUser } from "@/lib/data";
+import { Calendar as CalendarIcon, Plus, X as XIcon } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Calendar } from "../ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "../ui/checkbox";
+import { Progress } from "../ui/progress";
 
 interface NewTaskModalProps {
   projectId: string;
@@ -35,14 +37,20 @@ export function NewTaskModal({ projectId, columnId, onTaskCreated }: NewTaskModa
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState<Date | undefined>();
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [newChecklistItem, setNewChecklistItem] = useState("");
   const [open, setOpen] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
+
+  const checklistProgress = checklist.length > 0 ? (checklist.filter(item => item.completed).length / checklist.length) * 100 : 0;
 
   const resetForm = () => {
     setTitle("");
     setDescription("");
     setDueDate(undefined);
+    setChecklist([]);
+    setNewChecklistItem("");
   }
 
   const handleSave = async () => {
@@ -56,13 +64,14 @@ export function NewTaskModal({ projectId, columnId, onTaskCreated }: NewTaskModa
     }
 
     try {
-      const newTaskData = { 
+      const newTaskData: Omit<Task, 'id' | 'projectId'> = { 
           title, 
           description, 
           columnId, 
           assignees: [], 
           dueDate: dueDate?.toISOString(),
-          checklist: [],
+          checklist,
+          creatorId: user.uid,
         };
       const newTaskId = await createTask(projectId, newTaskData);
       onTaskCreated({ id: newTaskId, projectId: projectId, ...newTaskData });
@@ -73,6 +82,30 @@ export function NewTaskModal({ projectId, columnId, onTaskCreated }: NewTaskModa
       console.error(error);
       toast({ title: "Error al crear la tarea", variant: "destructive" });
     }
+  };
+
+  const addChecklistItem = () => {
+    if (newChecklistItem.trim() !== "") {
+      const newItem: ChecklistItem = {
+        id: `item-${Date.now()}`,
+        text: newChecklistItem.trim(),
+        completed: false,
+      };
+      setChecklist([...checklist, newItem]);
+      setNewChecklistItem("");
+    }
+  };
+
+  const toggleChecklistItem = (itemId: string) => {
+    setChecklist(
+      checklist.map(item =>
+        item.id === itemId ? { ...item, completed: !item.completed } : item
+      )
+    );
+  };
+  
+  const removeChecklistItem = (itemId: string) => {
+    setChecklist(checklist.filter(item => item.id !== itemId));
   };
 
   return (
@@ -89,7 +122,7 @@ export function NewTaskModal({ projectId, columnId, onTaskCreated }: NewTaskModa
             Introduce los detalles de tu nueva tarea. Haz clic en guardar cuando termines.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
           <div className="grid grid-cols-4 items-start gap-4">
             <Label htmlFor="title" className="text-right pt-2">
               Título
@@ -119,7 +152,7 @@ export function NewTaskModal({ projectId, columnId, onTaskCreated }: NewTaskModa
                 <Button
                     variant={"outline"}
                     className={cn(
-                    "w-[280px] justify-start text-left font-normal",
+                    "col-span-3 justify-start text-left font-normal",
                     !dueDate && "text-muted-foreground"
                     )}
                 >
@@ -136,6 +169,42 @@ export function NewTaskModal({ projectId, columnId, onTaskCreated }: NewTaskModa
                     />
                 </PopoverContent>
             </Popover>
+          </div>
+           <div className="grid grid-cols-4 gap-4">
+            <Label className="text-right pt-2">Checklist</Label>
+            <div className="col-span-3 space-y-3">
+              {checklist.length > 0 && (
+                  <Progress value={checklistProgress} className="w-full h-2" />
+              )}
+              <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                {checklist.map(item => (
+                  <div key={item.id} className="flex items-center gap-2 group">
+                    <Checkbox
+                      id={`new-checklist-${item.id}`}
+                      checked={item.completed}
+                      onCheckedChange={() => toggleChecklistItem(item.id)}
+                    />
+                    <Label htmlFor={`new-checklist-${item.id}`} className={cn("flex-grow", item.completed && "line-through text-muted-foreground")}>
+                      {item.text}
+                    </Label>
+                     <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => removeChecklistItem(item.id)}>
+                        <XIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Añadir un elemento..."
+                  value={newChecklistItem}
+                  onChange={e => setNewChecklistItem(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addChecklistItem()}
+                />
+                <Button onClick={addChecklistItem} size="sm">
+                  <Plus className="h-4 w-4 mr-1" /> Añadir
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
         <DialogFooter>

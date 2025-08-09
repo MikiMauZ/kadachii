@@ -12,6 +12,12 @@ export interface Assignee {
   email: string;
 }
 
+export interface TaskCreator {
+  id: string;
+  name: string;
+  avatarUrl: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -21,11 +27,14 @@ export interface Task {
   projectId: string;
   dueDate?: string; 
   checklist?: ChecklistItem[];
+  creatorId: string;
 }
 
 export interface Column {
   id: string;
   title: string;
+  order: number;
+  color?: string;
 }
 
 export interface Project {

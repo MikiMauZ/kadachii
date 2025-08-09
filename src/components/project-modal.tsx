@@ -44,7 +44,7 @@ export function ProjectModal({ children, onProjectCreated }: ProjectModalProps) 
 
     try {
         const newProjectData = { name, description };
-        const projectId = await createProject(user.uid, user.email, newProjectData);
+        const projectId = await createProject(user.uid, user.email, user.displayName, user.photoURL, newProjectData);
         onProjectCreated({id: projectId, ...newProjectData, ownerId: user.uid });
         setName("");
         setDescription("");

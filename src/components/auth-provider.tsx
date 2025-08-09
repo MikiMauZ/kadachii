@@ -4,23 +4,41 @@
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { usePathname, useRouter } from 'next/navigation';
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Skeleton } from './ui/skeleton';
 
-const AuthContext = createContext<{ user: User | null }>({ user: null });
+interface AuthContextType {
+  user: User | null;
+  refreshUser: () => void;
+  userVersion: number;
+}
+
+const AuthContext = createContext<AuthContextType>({ 
+  user: null, 
+  refreshUser: () => {},
+  userVersion: 0 
+});
 
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(auth.currentUser);
   const [loading, setLoading] = useState(true);
+  const [userVersion, setUserVersion] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
+
+  const refreshUser = useCallback(() => {
+    setUser(auth.currentUser);
+    setUserVersion(v => v + 1);
+  }, []);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setLoading(false);
+      setUserVersion(v => v + 1);
     });
     return () => unsubscribe();
   }, []);
@@ -50,6 +68,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, refreshUser, userVersion }}>{children}</AuthContext.Provider>
   );
 }

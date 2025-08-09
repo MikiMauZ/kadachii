@@ -22,6 +22,12 @@ import { ProjectMember } from "@/lib/types";
 import { inviteUserToProject, getProjectMembers } from "@/lib/data";
 import { usePathname } from "next/navigation";
 
+
+const isAvatarAnEmoji = (url: string | null | undefined) => {
+    if (!url) return false;
+    return url.length > 0 && !url.startsWith('http');
+}
+
 export function TeamModal({ children }: { children: React.ReactNode }) {
     const { user } = useAuth();
     const { toast } = useToast();
@@ -110,8 +116,14 @@ export function TeamModal({ children }: { children: React.ReactNode }) {
                     <div key={member.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <Avatar className="h-9 w-9">
-                        <AvatarImage src={member.avatarUrl ?? `https://placehold.co/100x100.png`} alt={member.name ?? member.email} data-ai-hint="person portrait"/>
-                        <AvatarFallback>{member.email?.[0].toUpperCase() ?? 'U'}</AvatarFallback>
+                           {isAvatarAnEmoji(member.avatarUrl) ? (
+                              <AvatarFallback className="text-xl bg-transparent">{member.avatarUrl}</AvatarFallback>
+                          ) : (
+                              <>
+                                <AvatarImage src={member.avatarUrl} alt={member.name ?? member.email} data-ai-hint="person portrait"/>
+                                <AvatarFallback>{(member.name ?? member.email).charAt(0).toUpperCase()}</AvatarFallback>
+                              </>
+                          )}
                         </Avatar>
                         <div>
                           <div className="flex items-center gap-2">

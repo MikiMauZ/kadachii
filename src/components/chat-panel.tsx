@@ -19,6 +19,11 @@ interface ChatPanelProps {
   onClose: () => void;
 }
 
+const isAvatarAnEmoji = (url: string | null | undefined) => {
+    if (!url) return false;
+    return url.length > 0 && !url.startsWith('http');
+}
+
 export function ChatPanel({ projectId, onClose }: ChatPanelProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -39,7 +44,6 @@ export function ChatPanel({ projectId, onClose }: ChatPanelProps) {
   }, [projectId]);
 
   useEffect(() => {
-    // Auto-scroll to bottom
     if (scrollAreaRef.current) {
         const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
         if (viewport) {
@@ -57,7 +61,7 @@ export function ChatPanel({ projectId, onClose }: ChatPanelProps) {
     const messageData: Omit<ChatMessage, 'id' | 'timestamp'> = {
       senderId: user.uid,
       senderName: currentUserData?.displayName ?? user.email ?? "Usuario Anónimo",
-      senderAvatarUrl: currentUserData?.photoURL ?? `https://placehold.co/100x100.png`,
+      senderAvatarUrl: currentUserData?.photoURL,
       text: newMessage.trim(),
     };
 
@@ -100,10 +104,16 @@ export function ChatPanel({ projectId, onClose }: ChatPanelProps) {
               >
                 {msg.senderId !== user?.uid && (
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={msg.senderAvatarUrl} data-ai-hint="person portrait" />
-                    <AvatarFallback>
-                      {msg.senderName.charAt(0)}
-                    </AvatarFallback>
+                     {isAvatarAnEmoji(msg.senderAvatarUrl) ? (
+                        <AvatarFallback className="text-xl bg-transparent">{msg.senderAvatarUrl}</AvatarFallback>
+                    ) : (
+                        <>
+                            <AvatarImage src={msg.senderAvatarUrl} data-ai-hint="person portrait" />
+                            <AvatarFallback>
+                            {msg.senderName.charAt(0)}
+                            </AvatarFallback>
+                        </>
+                    )}
                   </Avatar>
                 )}
                 <div
@@ -121,10 +131,16 @@ export function ChatPanel({ projectId, onClose }: ChatPanelProps) {
                 </div>
                  {msg.senderId === user?.uid && (
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={msg.senderAvatarUrl} data-ai-hint="person portrait" />
-                    <AvatarFallback>
-                      {msg.senderName.charAt(0)}
-                    </AvatarFallback>
+                    {isAvatarAnEmoji(msg.senderAvatarUrl) ? (
+                            <AvatarFallback className="text-xl bg-transparent">{msg.senderAvatarUrl}</AvatarFallback>
+                        ) : (
+                            <>
+                                <AvatarImage src={msg.senderAvatarUrl} data-ai-hint="person portrait" />
+                                <AvatarFallback>
+                                {msg.senderName.charAt(0)}
+                                </AvatarFallback>
+                            </>
+                        )}
                   </Avatar>
                 )}
               </div>

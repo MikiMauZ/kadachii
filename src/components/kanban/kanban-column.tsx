@@ -8,11 +8,20 @@ import { NewTaskModal } from "./new-task-modal";
 import React, { useState } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Button } from "../ui/button";
-import { Edit, MoreHorizontal, Trash } from "lucide-react";
+import { Edit, MoreHorizontal, Palette, Trash } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "../ui/alert-dialog";
 import { deleteColumn, updateColumn } from "@/lib/data";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "../ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { cn } from "@/lib/utils";
+
+const COLUMN_COLORS = [
+    '#FFFFFF', '#EF5350', '#EC407A', '#AB47BC', '#5C6BC0', 
+    '#42A5F5', '#26C6DA', '#66BB6A', '#FFEE58', '#FFA726', 
+    '#FF7043', '#8D6E63', '#78909C'
+];
+
 
 interface KanbanColumnProps {
   column: Column;
@@ -79,6 +88,17 @@ export function KanbanColumn({
         toast({ title: "Error al eliminar la columna", variant: "destructive" });
     }
   }
+  
+  const handleColorChange = async (color: string) => {
+    try {
+        const newColor = column.color === color ? undefined : color;
+        await updateColumn(projectId, column.id, { color: newColor });
+        onColumnUpdated({ ...column, color: newColor });
+    } catch(error) {
+        console.error("Error updating column color:", error);
+        toast({ title: "Error al cambiar el color", variant: "destructive" });
+    }
+  }
 
 
   return (
@@ -87,7 +107,7 @@ export function KanbanColumn({
       onDragOver={handleDragOver}
       className="flex flex-col w-80 shrink-0"
     >
-      <div className="flex items-center justify-between p-2 rounded-t-lg bg-muted/50">
+      <div className="flex items-center justify-between p-2 rounded-t-lg bg-card">
         <div className="flex items-center gap-2 flex-grow">
              {isEditingName ? (
                 <Input
@@ -101,11 +121,34 @@ export function KanbanColumn({
             ) : (
                 <h3 className="font-semibold text-lg px-2">{column.title}</h3>
             )}
-            <Badge variant="secondary" className="bg-accent text-accent-foreground">{tasks.length}</Badge>
+            <Badge variant="secondary">{tasks.length}</Badge>
         </div>
         <div className="flex items-center">
             <NewTaskModal projectId={projectId} columnId={column.id} onTaskCreated={onTaskCreated}>
             </NewTaskModal>
+            <Popover>
+                <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Palette className="h-4 w-4" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-2">
+                    <div className="grid grid-cols-7 gap-1">
+                    {COLUMN_COLORS.map(color => (
+                        <button
+                            key={color}
+                            onClick={() => handleColorChange(color)}
+                            className={cn(
+                                "h-8 w-8 rounded-full border-2",
+                                column.color === color ? 'border-primary' : 'border-transparent',
+                                color === '#FFFFFF' && 'border-gray-300'
+                            )}
+                            style={{ backgroundColor: color }}
+                        />
+                    ))}
+                    </div>
+                </PopoverContent>
+            </Popover>
              <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -143,7 +186,10 @@ export function KanbanColumn({
             </DropdownMenu>
         </div>
       </div>
-      <div className="flex flex-col gap-4 p-2 bg-muted/50 rounded-b-lg h-full">
+      <div 
+        className="flex flex-col gap-4 p-2 rounded-b-lg h-full transition-colors bg-card hover:shadow-md"
+        style={{ backgroundColor: column.color ? column.color : undefined }}
+        >
         {tasks.map((task) => (
           <KanbanCard 
             key={task.id} 

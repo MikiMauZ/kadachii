@@ -29,7 +29,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../auth-provider";
 import { useToast } from "@/hooks/use-toast";
 import { Task, ChecklistItem, Assignee, ProjectMember } from "@/lib/types";
-import { deleteTask, updateTask, getTasks, getProjectMembers } from "@/lib/data";
+import { deleteTask, updateTask, getProjectMembers } from "@/lib/data";
 import { Calendar as CalendarIcon, Plus, Trash, UserPlus, X as XIcon } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Calendar } from "../ui/calendar";
@@ -44,6 +44,11 @@ interface TaskModalProps {
   children: React.ReactNode;
   onUpdateTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
+}
+
+const isAvatarAnEmoji = (url: string | null | undefined) => {
+    if (!url) return false;
+    return url.length > 0 && !url.startsWith('http');
 }
 
 export function TaskModal({ task, children, onUpdateTask, onDeleteTask }: TaskModalProps) {
@@ -62,7 +67,6 @@ export function TaskModal({ task, children, onUpdateTask, onDeleteTask }: TaskMo
   
   const checklistProgress = checklist.length > 0 ? (checklist.filter(item => item.completed).length / checklist.length) * 100 : 0;
   
-   // Sync state with external task prop changes
     useEffect(() => {
         setTitle(task.title);
         setDescription(task.description);
@@ -90,8 +94,7 @@ export function TaskModal({ task, children, onUpdateTask, onDeleteTask }: TaskMo
     }
 
     try {
-      // Create a payload with only the fields that can be updated in this modal
-       const updatePayload: Partial<Task> = { 
+       const updatePayload: Partial<Omit<Task, 'id' | 'projectId' | 'creatorId'>> = { 
           title, 
           description, 
           dueDate: dueDate?.toISOString(),
@@ -99,10 +102,8 @@ export function TaskModal({ task, children, onUpdateTask, onDeleteTask }: TaskMo
           assignees,
         };
       
-      // Update in Firestore
       await updateTask(task.projectId, task.id, updatePayload);
       
-      // Create the full updated task object for local state update
       const updatedData: Task = { ...task, ...updatePayload };
 
       onUpdateTask(updatedData);
@@ -251,8 +252,14 @@ export function TaskModal({ task, children, onUpdateTask, onDeleteTask }: TaskMo
                                     <div key={member.id} className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <Avatar className="h-8 w-8">
-                                                <AvatarImage src={member.avatarUrl} data-ai-hint="person portrait" />
-                                                <AvatarFallback>{(member.name ?? member.email).charAt(0)}</AvatarFallback>
+                                                {isAvatarAnEmoji(member.avatarUrl) ? (
+                                                    <AvatarFallback className="text-xl bg-transparent">{member.avatarUrl}</AvatarFallback>
+                                                ) : (
+                                                    <>
+                                                        <AvatarImage src={member.avatarUrl} data-ai-hint="person portrait" />
+                                                        <AvatarFallback>{(member.name ?? member.email).charAt(0)}</AvatarFallback>
+                                                    </>
+                                                )}
                                             </Avatar>
                                             <Label htmlFor={`assign-${member.id}`}>{member.name ?? member.email}</Label>
                                         </div>

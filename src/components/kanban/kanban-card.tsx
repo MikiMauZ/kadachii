@@ -1,6 +1,6 @@
 
 "use client";
-import type { Task, ChecklistItem } from "@/lib/types";
+import type { Task, ChecklistItem, TaskCreator } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -10,9 +10,10 @@ import { format } from "date-fns";
 import { es } from 'date-fns/locale';
 import React, { useState, useEffect, useCallback } from "react";
 import { Checkbox } from "../ui/checkbox";
-import { updateTask } from "@/lib/data";
+import { updateTask, getUser } from "@/lib/data";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "../ui/skeleton";
 
 // Debounce function
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
@@ -24,6 +25,78 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
             }
             timeout = setTimeout(() => resolve(func(...args)), waitFor);
         });
+}
+
+const isAvatarAnEmoji = (url: string | null | undefined) => {
+    if (!url) return false;
+    return url.length > 0 && !url.startsWith('http');
+}
+
+const TaskCreatorAvatar = ({ creatorId }: { creatorId: string }) => {
+    const [creator, setCreator] = useState<TaskCreator | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let isMounted = true;
+        const fetchCreator = async () => {
+            setLoading(true);
+            try {
+                const userData = await getUser(creatorId);
+                if (isMounted && userData) {
+                    setCreator({
+                        id: userData.id,
+                        name: userData.displayName ?? userData.email,
+                        avatarUrl: userData.photoURL ?? ''
+                    });
+                }
+            } catch (error) {
+                console.error("Failed to fetch creator", error);
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        fetchCreator();
+        return () => { isMounted = false };
+    }, [creatorId]);
+
+    if (loading) {
+        return (
+             <div className="flex flex-col items-center">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-2 w-6 mt-1" />
+            </div>
+        )
+    }
+
+    if (!creator) return null;
+
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <div className="flex flex-col items-center">
+                    <Avatar className="h-8 w-8 border-2 border-primary ring-2 ring-primary">
+                        {isAvatarAnEmoji(creator.avatarUrl) ? (
+                            <AvatarFallback className="text-xl bg-transparent">{creator.avatarUrl}</AvatarFallback>
+                        ) : (
+                            <>
+                                <AvatarImage src={creator.avatarUrl} data-ai-hint="person portrait" />
+                                <AvatarFallback>{creator.name.charAt(0)}</AvatarFallback>
+                            </>
+                        )}
+                    </Avatar>
+                    <span className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                        {(creator.name ?? "???").substring(0, 3)}
+                    </span>
+                </div>
+            </TooltipTrigger>
+            <TooltipContent>
+                <p>Creado por: {creator.name}</p>
+            </TooltipContent>
+        </Tooltip>
+    )
 }
 
 
@@ -52,7 +125,6 @@ export function KanbanCard({ task, onDragStart, onUpdateTask, onDeleteTask }: Ka
         } catch (error) {
             console.error("Failed to update checklist", error);
             toast({ title: "Error al actualizar", variant: "destructive" });
-            // Revert optimistic update on error
             onUpdateTask(task);
         }
     }, 1000), [task.id, task.projectId, onUpdateTask, toast]);
@@ -64,12 +136,15 @@ export function KanbanCard({ task, onDragStart, onUpdateTask, onDeleteTask }: Ka
         );
         const updatedTask: Task = { ...currentTask, checklist: updatedChecklist };
 
-        // Optimistic UI update
         setCurrentTask(updatedTask); 
         onUpdateTask(updatedTask);
 
-        // Debounce the database update
         debouncedUpdateTask(updatedTask);
+    };
+
+    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, taskId: string) => {
+      e.stopPropagation();
+      onDragStart(e, taskId);
     };
 
 
@@ -77,7 +152,7 @@ export function KanbanCard({ task, onDragStart, onUpdateTask, onDeleteTask }: Ka
     <div>
         <Card
             draggable
-            onDragStart={(e) => onDragStart(e, task.id)}
+            onDragStart={(e) => handleDragStart(e, task.id)}
             className="cursor-grab active:cursor-grabbing bg-card hover:shadow-md transition-shadow duration-200"
         >
           <TaskModal task={task} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask}>
@@ -123,15 +198,27 @@ export function KanbanCard({ task, onDragStart, onUpdateTask, onDeleteTask }: Ka
                 )}
             </div>
             <div className="flex items-center justify-between mt-4">
-                <div className="flex -space-x-2">
+                <div className="flex items-start gap-4">
                 <TooltipProvider>
+                    {task.creatorId && <TaskCreatorAvatar creatorId={task.creatorId} />}
                     {(task.assignees || []).map((assignee) => (
-                    <Tooltip key={assignee.name}>
+                    <Tooltip key={assignee.id}>
                         <TooltipTrigger asChild>
-                        <Avatar className="h-8 w-8 border-2 border-card">
-                            <AvatarImage src={assignee.avatarUrl} data-ai-hint="person portrait" />
-                            <AvatarFallback>{assignee.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
+                        <div className="flex flex-col items-center">
+                            <Avatar className="h-8 w-8 border-2 border-card">
+                            {isAvatarAnEmoji(assignee.avatarUrl) ? (
+                                    <AvatarFallback className="text-xl bg-transparent">{assignee.avatarUrl}</AvatarFallback>
+                                ) : (
+                                    <>
+                                        <AvatarImage src={assignee.avatarUrl} data-ai-hint="person portrait" />
+                                        <AvatarFallback>{assignee.name.charAt(0)}</AvatarFallback>
+                                    </>
+                                )}
+                            </Avatar>
+                             <span className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                                {(assignee.name ?? "???").substring(0, 3)}
+                            </span>
+                        </div>
                         </TooltipTrigger>
                         <TooltipContent>
                         <p>{assignee.name}</p>

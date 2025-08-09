@@ -3,8 +3,8 @@
 import { Header } from '@/components/header';
 import { useAuth } from '@/components/auth-provider';
 import { useEffect, useState } from 'react';
-import { Project, Task, ProjectInvitation } from '@/lib/types';
-import { deleteProject, getProjects, getTasks, updateProject, getInvitationsForUser, acceptInvitation, declineInvitation } from '@/lib/data';
+import { Project, Task, ProjectInvitation, ProjectMember } from '@/lib/types';
+import { deleteProject, getProjects, getTasks, updateProject, getInvitationsForUser, acceptInvitation, declineInvitation, getProjectMembers, getUser } from '@/lib/data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -15,15 +15,27 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { EditProjectModal } from '@/components/edit-project-modal';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-interface ProjectWithTasks extends Project {
+interface ProjectWithDetails extends Project {
   taskCount: number;
   completedTaskCount: number;
+  members: ProjectMember[];
+  creator: {
+    name: string;
+    avatarUrl?: string;
+  }
+}
+
+const isAvatarAnEmoji = (url: string | null | undefined) => {
+    if (!url) return false;
+    return url.length > 0 && !url.startsWith('http');
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
-  const [projects, setProjects] = useState<ProjectWithTasks[]>([]);
+  const { user, userVersion } = useAuth();
+  const [projects, setProjects] = useState<ProjectWithDetails[]>([]);
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -35,27 +47,35 @@ export default function DashboardPage() {
     } else if (user === null) {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, userVersion]);
 
   const fetchProjectsAndTasks = async () => {
     if (!user) return;
     setLoading(true);
     try {
       const userProjects = await getProjects(user.uid);
-      const projectsWithTasks: ProjectWithTasks[] = await Promise.all(
+      const projectsWithDetails: ProjectWithDetails[] = await Promise.all(
         userProjects.map(async (project) => {
           const tasks = await getTasks(project.id);
           const completedTasks = tasks.filter(
             (task: Task) => task.columnId === 'hecho' // Assuming 'hecho' is the done column
           );
+           const members = await getProjectMembers(project.id);
+           const creatorData = await getUser(project.ownerId);
+
           return {
             ...project,
             taskCount: tasks.length,
             completedTaskCount: completedTasks.length,
+            members,
+            creator: {
+                name: creatorData?.displayName ?? creatorData?.email ?? 'Desconocido',
+                avatarUrl: creatorData?.photoURL
+            }
           };
         })
       );
-      setProjects(projectsWithTasks);
+      setProjects(projectsWithDetails);
     } catch (error) {
       console.error("Error fetching projects:", error);
       toast({ title: "Error al cargar los proyectos", variant: 'destructive' });
@@ -101,18 +121,15 @@ export default function DashboardPage() {
 
 
   const handleProjectCreated = (project: Project) => {
-    const newProjectWithTasks: ProjectWithTasks = {
-        ...project,
-        taskCount: 0,
-        completedTaskCount: 0,
-    };
-    setProjects(prevProjects => [...prevProjects, newProjectWithTasks]);
+    fetchProjectsAndTasks();
   };
   
   const handleProjectUpdated = (updatedProject: Project) => {
     setProjects(prevProjects => prevProjects.map(p => 
         p.id === updatedProject.id ? { ...p, ...updatedProject } : p
     ));
+    // Optionally re-fetch to get updated member details if names/avatars change
+    fetchProjectsAndTasks();
   };
 
   const handleProjectDeleted = async (projectId: string) => {
@@ -175,12 +192,14 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                    <Skeleton className="h-4 w-1/2" />
+                   <Skeleton className="h-8 w-1/4 mt-4" />
                 </CardContent>
               </Card>
             ))}
           </div>
         ) : projects.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <TooltipProvider>
             {projects.map((project) => (
               <Card key={project.id} className="h-full flex flex-col group">
                 <div className="relative">
@@ -222,19 +241,71 @@ export default function DashboardPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                 <Link href={`/dashboard/${project.id}`} className="flex-grow">
+                 <Link href={`/dashboard/${project.id}`} className="flex-grow flex flex-col">
                     <CardHeader>
                       <CardTitle>{project.name}</CardTitle>
                       <CardDescription className="line-clamp-2 h-[40px]">{project.description}</CardDescription>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex-grow flex flex-col justify-between">
                       <div className="text-sm text-muted-foreground">
                         {project.completedTaskCount} / {project.taskCount} tareas completadas
+                      </div>
+                      <div className="flex items-center mt-4">
+                         <div className="flex items-start gap-4">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <div className="flex flex-col items-center">
+                                        <Avatar className="h-8 w-8 border-2 border-primary ring-2 ring-primary z-10">
+                                            {isAvatarAnEmoji(project.creator.avatarUrl) ? (
+                                            <AvatarFallback className="text-xl bg-transparent">{project.creator.avatarUrl}</AvatarFallback>
+                                            ) : (
+                                            <>
+                                                <AvatarImage src={project.creator.avatarUrl} data-ai-hint="person portrait" />
+                                                <AvatarFallback>{(project.creator.name ?? '').charAt(0)}</AvatarFallback>
+                                            </>
+                                            )}
+                                        </Avatar>
+                                        <span className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                                            {(project.creator.name ?? "???").substring(0, 3)}
+                                        </span>
+                                    </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>Creado por: {project.creator.name}</p>
+                                </TooltipContent>
+                             </Tooltip>
+                             {project.members.filter(m => m.id !== project.ownerId).map(member => (
+                                 <Tooltip key={member.id}>
+                                     <TooltipTrigger asChild>
+                                        <div className="flex flex-col items-center">
+                                            <Avatar className="h-8 w-8 border-2 border-card">
+                                                {isAvatarAnEmoji(member.avatarUrl) ? (
+                                                    <AvatarFallback className="text-xl bg-transparent">{member.avatarUrl}</AvatarFallback>
+                                                ) : (
+                                                    <>
+                                                        <AvatarImage src={member.avatarUrl} data-ai-hint="person portrait" />
+                                                        <AvatarFallback>{(member.name ?? member.email).charAt(0)}</AvatarFallback>
+                                                    </>
+                                                )}
+                                            </Avatar>
+                                            <span className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                                                {(member.name ?? "???").substring(0, 3)}
+                                            </span>
+                                        </div>
+                                     </TooltipTrigger>
+                                     <TooltipContent><p>{member.name ?? member.email}</p></TooltipContent>
+                                 </Tooltip>
+                             ))}
+                          </div>
+                          <span className="text-xs text-muted-foreground ml-3 self-start pt-2">
+                            {project.members.length} {project.members.length === 1 ? 'miembro' : 'miembros'}
+                          </span>
                       </div>
                     </CardContent>
                  </Link>
               </Card>
             ))}
+            </TooltipProvider>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] w-full gap-4 p-8 text-center border-2 border-dashed rounded-lg">

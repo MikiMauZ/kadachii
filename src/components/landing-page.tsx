@@ -54,7 +54,7 @@ export function LandingPage() {
                 alt="Tablero Kanban de Kadichii"
                 className="mx-auto aspect-video overflow-hidden rounded-xl object-cover object-center sm:w-full lg:order-last"
                 data-ai-hint="screenshot kanban board"
-                src="/portada1a.png"
+                src="/portada1a.png?v=3"
                 width={600}
                 height={400}
               />
@@ -132,7 +132,7 @@ export function LandingPage() {
                     alt="Creación de Proyectos"
                     className="mx-auto aspect-video overflow-hidden rounded-xl object-cover object-center"
                     data-ai-hint="organización planificación"
-                    src="/portada2.png"
+                    src="/portada2.png?v=2"
                     width={600}
                     height={400}
                 />
@@ -147,15 +147,15 @@ export function LandingPage() {
                     <li className="flex gap-4">
                         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">2</span>
                         <div className="space-y-1">
-                            <h3 className="text-xl font-bold">Añade tus Tareas</h3>
-                            <p className="text-muted-foreground">Vuelca todas tus ideas y pendientes en la columna "Por Hacer". No te preocupes por el orden todavía.</p>
+                            <h3 className="text-xl font-bold">Define tu Flujo y Añade Tareas</h3>
+                            <p className="text-muted-foreground">Crea columnas que representen tu forma de trabajar. Luego, añade tareas a tu primera columna de ideas o pendientes.</p>
                         </div>
                     </li>
                      <li className="flex gap-4">
                         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">3</span>
                         <div className="space-y-1">
                             <h3 className="text-xl font-bold">Arrastra y Organiza</h3>
-                            <p className="text-muted-foreground">Mueve tus tareas a través de las columnas a medida que avanzas. ¡Disfruta de la satisfacción de llegar a "Hecho"!</p>
+                            <p className="text-muted-foreground">Mueve tus tareas a través de las columnas a medida que avanzas. ¡Disfruta de la satisfacción de ver tu progreso!</p>
                         </div>
                     </li>
                 </ol>
@@ -165,8 +165,13 @@ export function LandingPage() {
       </main>
       <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
         <p className="text-xs text-muted-foreground">
-          © 2024 Kadichii. Todos los derechos reservados.
+          2025 kadichii by aplicadia
         </p>
+        <nav className="sm:ml-auto flex gap-4 sm:gap-6">
+          <Link className="text-xs hover:underline underline-offset-4" href="/privacy-policy">
+            Política de Privacidad
+          </Link>
+        </nav>
       </footer>
     </div>
   );

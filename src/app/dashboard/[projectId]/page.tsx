@@ -10,15 +10,15 @@ import { Button } from '@/components/ui/button';
 import { MessageSquare } from 'lucide-react';
 import { ChatPanel } from '@/components/chat-panel';
 
-
 export default function ProjectPage({ params }: { params: { projectId: string } }) {
-  const { user } = useAuth();
+  const { user, userVersion } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const projectId = React.use(params).projectId;
+  const [layout, setLayout] = useState<'row' | 'grid'>('row');
 
   useEffect(() => {
     if (user && projectId) {
@@ -56,15 +56,12 @@ export default function ProjectPage({ params }: { params: { projectId: string } 
       setTasks([]);
       setProject(null);
     }
-  }, [user, projectId]);
+  }, [user, projectId, userVersion]);
 
   const handleProjectCreated = (newProject: Project) => {
     // This is handled on the main dashboard page now
   }
 
-  // Optimistic updates are now handled by real-time listeners. 
-  // We can still keep these handlers for components that might not be subscribed yet,
-  // or to provide an immediate UI feedback before the listener catches up.
   const handleDeleteTask = (taskId: string) => {
     setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
   };
@@ -75,8 +72,11 @@ export default function ProjectPage({ params }: { params: { projectId: string } 
       <Header 
         onProjectCreated={handleProjectCreated}
         projectName={project?.name} 
+        layout={layout}
+        setLayout={setLayout}
       />
-      <main className="flex flex-1 overflow-x-auto relative">
+
+      <main className="flex flex-1 overflow-auto relative">
         <KanbanBoard
             key={projectId}
             initialColumns={columns}
@@ -85,6 +85,7 @@ export default function ProjectPage({ params }: { params: { projectId: string } 
             setInitialTasks={setTasks}
             projectId={projectId}
             loading={loading}
+            layout={layout}
         />
          {!isChatOpen && (
           <Button
